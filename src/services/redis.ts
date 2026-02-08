@@ -1,4 +1,4 @@
-import Redis from "ioredis";
+import { Redis } from "ioredis";
 import { logger } from "../utils/logger.js";
 
 const REDIS_URL = process.env.REDIS_URL;
@@ -10,7 +10,7 @@ if (REDIS_URL) {
     redisClient = new Redis(REDIS_URL, {
         maxRetriesPerRequest: null,
         enableReadyCheck: false,
-        retryStrategy(times) {
+        retryStrategy(times: number) {
             const delay = Math.min(times * 50, 2000);
             return delay;
         },
@@ -20,7 +20,7 @@ if (REDIS_URL) {
         logger.info("Redis connected successfully");
     });
 
-    redisClient.on("error", (err) => {
+    redisClient.on("error", (err: Error) => {
         logger.error("Redis connection error", err);
     });
 } else {

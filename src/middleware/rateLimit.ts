@@ -7,8 +7,8 @@ const getStore = (prefix: string) => {
     if (!redis) return undefined;
 
     return new RedisStore({
-        // @ts-expect-error - types mismatch between ioredis and rate-limit-redis but compatible at runtime
-        sendCommand: (...args: string[]) => redis.call(...args),
+        // @ts-ignore - types mismatch between ioredis and rate-limit-redis but compatible at runtime
+        sendCommand: (...args: string[]) => redis!.call(...args),
         prefix: `rl:${prefix}:`,
     });
 };
