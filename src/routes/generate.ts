@@ -99,10 +99,12 @@ router.post(
 // Full comic: 10 pages (requires payment)
 router.post(
     "/full",
+    authenticateUser,
     generationLimiter,
     validateBody(generateSchema),
     async (req, res) => {
         const body = req.body as GenerateRequest;
+        const user = req.user;
 
         const paymentToken = req.headers["x-payment-token"] as string;
         if (!paymentToken) {
@@ -143,6 +145,7 @@ router.post(
             // Create job in database
             job = await prisma.comicJob.create({
                 data: {
+                    userId: user.id, // Link to user
                     image1Url: body.image1Url,
                     image2Url: body.image2Url,
                     theme: body.theme,

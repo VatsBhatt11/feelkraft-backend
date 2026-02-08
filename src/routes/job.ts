@@ -3,6 +3,8 @@ import { prisma } from "../utils/prisma.js";
 import { logger } from "../utils/logger.js";
 import { cacheGet, cacheSet } from "../services/redis.js";
 
+import { authenticateUser } from "../middleware/auth.js";
+
 const router = Router();
 
 // Get job status
@@ -89,8 +91,9 @@ router.get("/:id/download", async (req, res) => {
 });
 
 // List all jobs (for gallery)
-router.get("/list", async (req, res) => {
-    const cacheKey = "gallery:list";
+router.get("/list", authenticateUser, async (req, res) => {
+    const userId = req.user.id;
+    const cacheKey = `gallery:list:${userId}`;
 
     try {
         // Try cache first
@@ -100,6 +103,7 @@ router.get("/list", async (req, res) => {
         }
 
         const jobs = await prisma.comicJob.findMany({
+            where: { userId },
             orderBy: { createdAt: "desc" },
             take: 50,
             include: {

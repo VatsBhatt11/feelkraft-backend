@@ -8,7 +8,7 @@ const router = Router();
 // Create order
 router.post("/order", async (req, res) => {
     try {
-        const { amount = 1 } = req.body; // Default ₹1
+        const { amount = 249 } = req.body; // Default ₹249
         const order = await paymentService.createOrder(amount);
         res.json(order);
     } catch (error) {
@@ -20,7 +20,7 @@ router.post("/order", async (req, res) => {
 // Verify payment
 router.post("/verify", async (req, res) => {
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount = 249 } = req.body;
 
         const isValid = paymentService.verifySignature(
             razorpay_order_id,
@@ -46,7 +46,7 @@ router.post("/verify", async (req, res) => {
                         paymentId: razorpay_payment_id,
                         orderId: razorpay_order_id,
                         signature: razorpay_signature,
-                        amount: 1, // Store amount (currently fixed at 1)
+                        amount: amount, // Store actual amount
                         currency: "INR",
                         status: "success",
                         phoneNumber: phone,

@@ -41,7 +41,7 @@ const themeSettings: Record<string, { mood: string; colors: string; elements: st
 // Style-specific art directions
 export const styleSettings: Record<string, string> = {
     "disney-pixar": "bright Disney-Pixar inspired movie style, clean lines, vibrant 3D colors, high-end animation aesthetic",
-    manga: "Japanese manga style, expressive eyes, dynamic poses, screen tones. Use English text only for any speech bubbles or text.",
+    manga: "MODERN colorful Japanese manga style, vibrant digital colors, expressive eyes, dynamic poses, high-quality anime aesthetic. Use English text only for any speech bubbles or text.",
     ghibli: "Studio Ghibli inspired anime style, soft painted backgrounds, expressive character designs, whimsical and magical atmosphere",
 };
 
