@@ -16,6 +16,7 @@ export const generateSchema = z.object({
     relationship: z.string().max(100).optional(),
     tone: z.enum(["romantic", "funny", "adventure", "heartfelt", "nostalgic"]).optional(),
     quote: z.string().max(200).optional(),
+    userId: z.string({ required_error: "User ID is required" }),
 });
 
 export type GenerateRequest = z.infer<typeof generateSchema>;

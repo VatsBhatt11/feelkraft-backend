@@ -36,7 +36,7 @@ router.post(
             // Create job in database
             const job = await prisma.comicJob.create({
                 data: {
-                    userId: user.id, // Link to user
+                    userId: body.userId, // Link to user from body
                     image1Url: body.image1Url,
                     image2Url: body.image2Url,
                     theme: body.theme,
@@ -145,7 +145,7 @@ router.post(
             // Create job in database
             job = await prisma.comicJob.create({
                 data: {
-                    userId: user.id, // Link to user
+                    userId: body.userId, // Link to user from body
                     image1Url: body.image1Url,
                     image2Url: body.image2Url,
                     theme: body.theme,

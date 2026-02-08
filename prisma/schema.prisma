@@ -18,8 +18,8 @@ model User {
 
 model ComicJob {
   id     String    @id @default(uuid()) @db.Uuid
-  userId String?   @db.Uuid
-  user   User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String    @db.Uuid
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   status JobStatus @default(PENDING)
 
   // Input data
