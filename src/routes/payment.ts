@@ -29,6 +29,16 @@ router.post("/verify", async (req, res) => {
         );
 
         if (isValid) {
+            // Fetch payment details to get the phone number (contact)
+            let phone = null;
+            try {
+                const paymentDetails = await paymentService.getPaymentDetails(razorpay_payment_id);
+                phone = paymentDetails.contact;
+                logger.info("Fetched phone from Razorpay", { phone });
+            } catch (fetchError) {
+                logger.error("Could not fetch phone from Razorpay", fetchError);
+            }
+
             // Store payment in DB
             try {
                 await prisma.payment.create({
@@ -39,13 +49,13 @@ router.post("/verify", async (req, res) => {
                         amount: 1, // Store amount (currently fixed at 1)
                         currency: "INR",
                         status: "success",
+                        phoneNumber: phone,
                         // comicJobId can be linked later when the token is used
                     }
                 });
                 logger.info("Payment recorded in DB", { paymentId: razorpay_payment_id });
             } catch (dbError) {
                 logger.error("Failed to record payment in DB", dbError);
-                // We don't fail the request if DB logging fails, but it's critical to know
             }
 
             // In a real app, generate a JWT token here signed with your secret

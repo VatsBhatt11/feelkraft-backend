@@ -9,7 +9,7 @@ export const generateSchema = z.object({
     image1Url: z.string().url("Invalid image1 URL"),
     image2Url: z.string().url("Invalid image2 URL"),
     theme: z.enum(["romantic", "adventure", "funny", "fantasy", "heartfelt", "nostalgic"]),
-    style: z.enum(["cartoon", "manga", "watercolor", "pastel", "glow", "ink", "vintage", "modern"]),
+    style: z.enum(["ghibli", "disney-pixar", "manga"]),
     story: z.string().max(2000).optional(),
     character1Name: z.string().max(50).optional(),
     character2Name: z.string().max(50).optional(),

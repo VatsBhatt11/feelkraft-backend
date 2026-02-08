@@ -4,7 +4,7 @@ import { nanoBananaService } from "../services/nanoBanana.js";
 import { pdfGeneratorService } from "../services/pdfGenerator.js";
 import { validateBody, generateSchema, type GenerateRequest } from "../middleware/validation.js";
 import { freeUserLimiter, generationLimiter } from "../middleware/rateLimit.js";
-import { buildFreePreviewPrompt } from "../utils/prompts.js";
+import { buildFreePreviewPrompt, styleSettings } from "../utils/prompts.js";
 import { logger } from "../utils/logger.js";
 import { storageService } from "../services/storage.js";
 import { paymentService } from "../services/payment.js";
@@ -168,31 +168,30 @@ router.post(
             Characters: ${body.character1Name} and ${body.character2Name}
             Relationship: ${body.relationship}
             Tone: ${body.tone}
-            Slogan/Title for Back Cover: "${slogan}"
+            Slogan/Quote for Back Cover: "${slogan}"
             
             Task: Break this story into exactly 5 sequential comic book page descriptions.
-            Plus create a visual description for a Front Cover (Title starting with "Our...") and a Back Cover (Conclusion).
+            Plus create a visual description for a Front Cover and a Back Cover (Conclusion).
             
             CRITICAL SAFETY INSTRUCTION: You are a PG-13 comic generator. DO NOT generate nudity, sexual content, gore, or extreme violence. If the story contains such themes, tone them down to be suggestive but safe, or refuse if impossible.
             
             Requirements:
-            1. Front Cover: Visual description suitable for a cover. Title should be creative related to "Our...".
+            1. Front Cover: Visual description suitable for a cover. Generate a creative title for the front cover that is RELEVANT to the story details (e.g. "A Night in Paris", "The Lost Key of Love", etc.). DO NOT simply use "Our Romantic Story".
             2. Pages 1-5: Each page must be described as having a 5-panel layout. 
                - CRITICAL: At least 3 panels on EVERY page must have meaningful dialogue or narration relevant to the story on that page.
                - Ensure consistent storytelling across pages.
             3. Back Cover: A Great Happy Ending visual. 
                - CRITICAL: NO dialogues on the back cover.
-               - The only text should be the slogan: "${slogan}".
-               - If the user didn't provide a slogan, generate a short, romantic/meaningful 3-5 word slogan for the back cover yourself.
             
             Return a JSON object with exactly this structure:
             {
-              "frontCover": "Visual description of the front cover...",
+              "frontCoverTitle": "A creative title related to the story",
+              "frontCover": "Visual description of the front cover (visual details only, no text descriptions)...",
               "pages": ["Description for page 1", "Description for page 2", ... (5 total)],
-              "backCover": "Visual description of the back cover including the slogan...",
-              "generatedSlogan": "The slogan you used (either provided or generated)"
+              "backCover": "Visual description of the back cover (visual details only, no text or slogan descriptions)...",
+              "generatedSlogan": "The slogan/quote you used (either the provided one or a new 3-5 word poetic one if the provided one was too long or generic)"
             }
-            Make sure the descriptions are visual and suitable for an AI image generator.
+            Make sure the descriptions are visual and suitable for an AI image generator. DO NOT describe text or titles INSIDE the visual descriptions as they will be added separately.
             `;
 
             const storyStructure = await groqService.generateStoryStructure(fullStoryPrompt);
@@ -202,10 +201,12 @@ router.post(
             // Use the slogan returned by AI (in case it generated one) or the input one
             const finalSlogan = storyStructure.generatedSlogan || slogan;
 
+            const artStyle = styleSettings[body.style] || "";
+            const finalTitle = storyStructure.frontCoverTitle || `Our ${body.theme} Story`;
             const prompts = [
-                `Front cover of a comic book. Title text "Our ${body.theme}". ${storyStructure.frontCover} --ar 3:4`,
-                ...storyStructure.pages.map((desc: string, i: number) => `Comic page ${i + 1}, 5 panel layout. ${desc} --ar 3:4`),
-                `Back cover of a comic book. ${storyStructure.backCover} Text "${finalSlogan}" at the bottom. --ar 3:4`
+                `Front cover of a comic book in ${artStyle} style. Title text "${finalTitle}". ${storyStructure.frontCover} --ar 3:4`,
+                ...storyStructure.pages.map((desc: string, i: number) => `Comic page ${i + 1} in ${artStyle} style, 5 panel layout. ${desc} --ar 3:4`),
+                `Back cover of a comic book in ${artStyle} style. ${storyStructure.backCover} Text "${finalSlogan}" at the bottom. NO ISBN, NO BARCODE. --ar 3:4`
             ];
 
             // Create all tasks (10 API calls)
@@ -261,7 +262,7 @@ router.get("/:jobId/download-pdf", async (req, res) => {
     try {
         const job = await prisma.comicJob.findUnique({
             where: { id: jobId },
-            select: { generatedImages: true, character1Name: true, character2Name: true }
+            select: { generatedImages: true, character1Name: true, character2Name: true, style: true }
         });
 
         if (!job || !job.generatedImages || job.generatedImages.length === 0) {
@@ -271,7 +272,7 @@ router.get("/:jobId/download-pdf", async (req, res) => {
         const pdfBuffer = await pdfGeneratorService.generatePdfBuffer(job.generatedImages, true);
 
         res.setHeader("Content-Type", "application/pdf");
-        const filename = `${job.character1Name || "Character1"}-${job.character2Name || "Character2"}_story.pdf`;
+        const filename = `${job.character1Name || "Character1"}_${job.character2Name || "Character2"}_${job.style}.pdf`;
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
         res.send(pdfBuffer);
     } catch (error) {
@@ -291,17 +292,28 @@ async function pollAndComplete(jobId: string, taskIds: string[]) {
         for (let i = 0; i < taskIds.length; i++) {
             const taskId = taskIds[i];
             const results = await nanoBananaService.pollUntilComplete(taskId);
+            const externalUrl = results[0];
+
+            logger.info("Downloading image from Kie for permanent storage", { taskId, url: externalUrl });
+
+            // Download and re-upload to Supabase for permanent storage
+            const buffer = await storageService.downloadImage(externalUrl);
+            const permanentUrl = await storageService.uploadGeneratedFile(
+                buffer,
+                `panel-${jobId}-${i}.png`,
+                "image/png"
+            );
 
             // Update log
             await prisma.generationLog.update({
                 where: { id: (await prisma.generationLog.findFirst({ where: { taskId } }))?.id },
                 data: {
                     status: "success",
-                    resultUrl: results[0],
+                    resultUrl: permanentUrl,
                 },
             });
 
-            imageUrls.push(results[0]);
+            imageUrls.push(permanentUrl);
         }
 
         // Update job as completed (without PDF URL)

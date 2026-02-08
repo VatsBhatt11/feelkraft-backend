@@ -39,13 +39,10 @@ const themeSettings: Record<string, { mood: string; colors: string; elements: st
 };
 
 // Style-specific art directions
-const styleSettings: Record<string, string> = {
-    cartoon: "bright cartoon style, clean lines, vibrant colors, Disney-Pixar inspired",
+export const styleSettings: Record<string, string> = {
+    "disney-pixar": "bright Disney-Pixar inspired movie style, clean lines, vibrant 3D colors, high-end animation aesthetic",
     manga: "Japanese manga style, expressive eyes, dynamic poses, screen tones",
-    watercolor: "soft watercolor illustration, flowing colors, dreamy atmosphere",
-    pastel: "pastel color palette, soft gradients, ethereal glow, dreamlike quality",
-    glow: "neon glow lines, dark background, cyberpunk-inspired, luminescent outlines",
-    ink: "detailed ink sketch, crosshatching, vintage illustration style, dramatic shadows",
+    ghibli: "Studio Ghibli inspired anime style, soft painted backgrounds, expressive character designs, whimsical and magical atmosphere",
 };
 
 // Segment story into page-specific contexts

@@ -3,6 +3,7 @@ import { logger } from "../utils/logger.js";
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 interface StoryStructure {
+    frontCoverTitle?: string;
     frontCover: string;
     pages: string[];
     backCover: string;
@@ -81,11 +82,12 @@ export class GroqService {
                             Return ONLY valid JSON with no markdown formatting or extra text.
                             The JSON structure must be:
                             {
+                              "frontCoverTitle": "A creative title",
                               "frontCover": "Visual description...",
                               "pages": ["Page 1 desc", "Page 2 desc", ...],
-                              "backCover": "Visual description..."
-                            }
-                            Ensuring "pages" has exactly 8 items.`,
+                              "backCover": "Visual description...",
+                              "generatedSlogan": "Short slogan"
+                            }`,
                         },
                         {
                             role: "user",

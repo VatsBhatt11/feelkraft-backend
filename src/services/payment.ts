@@ -48,6 +48,15 @@ export class PaymentService {
 
         return isValid;
     }
+
+    async getPaymentDetails(paymentId: string): Promise<any> {
+        try {
+            return await this.razorpay.payments.fetch(paymentId);
+        } catch (error) {
+            logger.error("Failed to fetch Razorpay payment details", error);
+            throw error;
+        }
+    }
 }
 
 export const paymentService = new PaymentService();

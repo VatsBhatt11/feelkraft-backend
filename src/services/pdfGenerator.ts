@@ -71,29 +71,29 @@ export class PdfGeneratorService {
                 // Add branding to front cover (first page) and back cover (last page)
                 const isCover = i === 0 || i === imageUrls.length - 1;
                 if (addBranding && isCover && logoImage) {
-                    const logoSize = 30;
-                    const margin = 20;
-                    const textSize = 10;
+                    const logoSize = 80;
+                    const margin = 30;
+                    const textSize = 18;
 
                     // Position at bottom-right corner
-                    const logoX = pageWidth - logoSize - margin - 80; // Extra space for text
+                    const logoX = pageWidth - logoSize - margin - 150; // Extra space for text
                     const logoY = margin;
 
                     // Draw semi-transparent white background for better visibility
                     page.drawRectangle({
-                        x: logoX - 5,
-                        y: logoY - 5,
-                        width: logoSize + 90,
-                        height: logoSize + 10,
+                        x: logoX - 15,
+                        y: logoY - 15,
+                        width: logoSize + 180,
+                        height: logoSize + 30,
                         color: rgb(1, 1, 1),
                         opacity: 0.9,
                     });
 
                     // Draw "Powered By" text
                     page.drawText("Powered By", {
-                        x: logoX,
-                        y: logoY + logoSize - 8,
-                        size: 8,
+                        x: logoX + logoSize + 15,
+                        y: logoY + logoSize - 25,
+                        size: 12,
                         font,
                         color: rgb(0.4, 0.4, 0.4),
                     });
@@ -108,7 +108,7 @@ export class PdfGeneratorService {
 
                     // Draw "FeelKraft" text
                     page.drawText("FeelKraft", {
-                        x: logoX + logoSize + 5,
+                        x: logoX + logoSize + 15,
                         y: logoY + 10,
                         size: textSize,
                         font,
