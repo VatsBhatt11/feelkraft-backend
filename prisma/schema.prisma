@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   String     @id @default(uuid())
+  email                String?    @unique
+  isPro                Boolean    @default(false)
+  freeGenerationsCount Int        @default(0)
+  createdAt            DateTime   @default(now())
+  jobs                 ComicJob[]
+}
+
+model ComicJob {
+  id     String    @id @default(uuid())
+  userId String?
+  user   User?     @relation(fields: [userId], references: [id])
+  status JobStatus @default(PENDING)
+
+  // Input data
+  image1Url      String
+  image2Url      String
+  prompt         String?
+  theme          String
+  style          String
+  character1Name String?
+  character2Name String?
+
+  // Output data
+  pageCount       Int      @default(1)
+  generatedImages String[] @default([])
+  pdfUrl          String?
+
+  // Tracking
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  logs      GenerationLog[]
+}
+
+enum JobStatus {
+  PENDING
+  GENERATING
+  COMPLETED
+  FAILED
+}
+
+model GenerationLog {
+  id    String   @id @default(uuid())
+  jobId String
+  job   ComicJob @relation(fields: [jobId], references: [id])
+
+  taskId    String // Nano Banana task ID
+  pageNum   Int
+  status    String // waiting, success, fail
+  resultUrl String?
+  costTime  Int?
+  error     String?
+
+  createdAt DateTime @default(now())
+}
+
+model Payment {
+  id         String   @id @default(uuid())
+  orderId    String
+  paymentId  String   @unique
+  signature  String
+  amount     Int
+  currency   String
+  status     String   @default("success")
+  userEmail  String?
+  comicJobId String?
+  createdAt  DateTime @default(now())
+}
