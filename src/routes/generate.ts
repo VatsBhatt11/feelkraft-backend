@@ -157,6 +157,20 @@ router.post(
 
             logger.info("Full comic job created", { jobId: job.id });
 
+            // 2. Link payment to job in DB
+            try {
+                const decodedToken = JSON.parse(Buffer.from(paymentToken, "base64").toString());
+                if (decodedToken.paymentId) {
+                    await prisma.payment.update({
+                        where: { paymentId: decodedToken.paymentId },
+                        data: { comicJobId: job.id }
+                    });
+                    logger.info("Payment linked to job", { paymentId: decodedToken.paymentId, jobId: job.id });
+                }
+            } catch (linkError) {
+                logger.warn("Failed to link payment to job", { error: linkError, jobId: job.id });
+            }
+
             // Generate all prompts with full context using Groq
             // We need 7 distinct panels: 
             // 1. Front Cover (Title "Our ...")
