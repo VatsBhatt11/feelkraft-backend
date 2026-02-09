@@ -11,6 +11,7 @@ import { paymentRouter } from "./routes/payment.js";
 import { cleanupService } from "./services/cleanup.js";
 import { rateLimiter } from "./middleware/rateLimit.js";
 import { logger } from "./utils/logger.js";
+import { authenticateUser } from "./middleware/auth.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -33,6 +34,9 @@ app.use("/api/callback", callbackRouter);
 app.use("/api/refine", refineRouter);
 
 app.use("/api/payment", paymentRouter);
+app.post("/api/auth/sync", authenticateUser, (req, res) => {
+    res.json({ success: true, user: req.user });
+});
 
 app.get("/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
