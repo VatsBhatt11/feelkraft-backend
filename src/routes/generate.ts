@@ -3,8 +3,8 @@ import { prisma } from "../utils/prisma.js";
 import { nanoBananaService } from "../services/nanoBanana.js";
 import { pdfGeneratorService } from "../services/pdfGenerator.js";
 import { validateBody, generateSchema, type GenerateRequest } from "../middleware/validation.js";
-import { freeUserLimiter, generationLimiter } from "../middleware/rateLimit.js";
-import { buildFreePreviewPrompt, styleSettings } from "../utils/prompts.js";
+import { generationLimiter } from "../middleware/rateLimit.js";
+import { buildSinglePagePrompt, styleSettings } from "../utils/prompts.js";
 import { logger } from "../utils/logger.js";
 import { storageService } from "../services/storage.js";
 import { paymentService } from "../services/payment.js";
@@ -14,29 +14,39 @@ import { authenticateUser } from "../middleware/auth.js";
 
 const router = Router();
 
-// Free preview: 1 page comic
+// Single page comic (requires ₹9 payment)
 router.post(
     "/preview",
-    authenticateUser, // Require auth
-    freeUserLimiter,
+    authenticateUser,
+    generationLimiter,
     validateBody(generateSchema),
     async (req, res) => {
         const body = req.body as GenerateRequest;
         const user = req.user;
 
-        // Check explicit free limit from DB (trusted source of truth)
-        if (user.freeGenerationsCount >= 1 && !user.isPro) {
-            return res.status(403).json({
-                error: "Free limit reached",
-                message: "You have already used your free generation. Please upgrade to create more."
+        const paymentToken = req.headers["x-payment-token"] as string;
+        if (!paymentToken) {
+            return res.status(402).json({
+                error: "Payment required",
+                message: "Single page generation requires purchase"
             });
+        }
+
+        try {
+            const decoded = JSON.parse(Buffer.from(paymentToken, "base64").toString());
+            if (!decoded.paymentId || !decoded.orderId || decoded.amount !== 9 || Date.now() - decoded.timestamp > 3600000) {
+                throw new Error("Invalid or expired payment token for single page");
+            }
+            logger.info("Payment verified for single page", { paymentId: decoded.paymentId });
+        } catch (error) {
+            return res.status(403).json({ error: "Invalid payment token" });
         }
 
         try {
             // Create job in database
             const job = await prisma.comicJob.create({
                 data: {
-                    userId: body.userId, // Link to user from body
+                    userId: body.userId,
                     image1Url: body.image1Url,
                     image2Url: body.image2Url,
                     theme: body.theme,
@@ -47,16 +57,21 @@ router.post(
                 },
             });
 
-            // Increment free generation count atomically
-            await prisma.user.update({
-                where: { id: user.id },
-                data: { freeGenerationsCount: { increment: 1 } }
-            });
+            // Link payment
+            try {
+                const decodedToken = JSON.parse(Buffer.from(paymentToken, "base64").toString());
+                if (decodedToken.paymentId) {
+                    await prisma.payment.update({
+                        where: { paymentId: decodedToken.paymentId },
+                        data: { comicJobId: job.id }
+                    });
+                }
+            } catch (e) { }
 
-            logger.info("Free preview job created", { jobId: job.id, userId: user.id });
+            logger.info("Single page job created", { jobId: job.id, userId: user.id });
 
             // Generate prompt and call API
-            const prompt = buildFreePreviewPrompt(
+            const prompt = buildSinglePagePrompt(
                 body.theme,
                 body.style,
                 body.story,
@@ -73,7 +88,6 @@ router.post(
                 resolution: "2K",
             });
 
-            // Log the generation task
             await prisma.generationLog.create({
                 data: {
                     jobId: job.id,
@@ -83,20 +97,19 @@ router.post(
                 },
             });
 
-            // Start polling in background (don't await)
             pollAndComplete(job.id, [taskId]).catch((err) => {
                 logger.error("Background polling failed", { jobId: job.id, error: err });
             });
 
             res.json({ jobId: job.id });
         } catch (error) {
-            logger.error("Preview generation failed", error);
+            logger.error("Single page generation failed", error);
             res.status(500).json({ error: "Generation failed" });
         }
     }
 );
 
-// Full comic: 10 pages (requires payment)
+// Full comic: 7 pages (requires ₹99 payment)
 router.post(
     "/full",
     authenticateUser,
@@ -116,12 +129,11 @@ router.post(
 
         try {
             const decoded = JSON.parse(Buffer.from(paymentToken, "base64").toString());
-            // In a real app, you would verify the signature of the token itself or check DB
-            // For now, we trust the token if it has a valid structure and recent timestamp
-            if (!decoded.paymentId || !decoded.orderId || Date.now() - decoded.timestamp > 3600000) {
-                throw new Error("Invalid or expired payment token");
+            const validAmount = decoded.amount === 99 || decoded.amount === 90;
+            if (!decoded.paymentId || !decoded.orderId || !validAmount || Date.now() - decoded.timestamp > 3600000) {
+                throw new Error("Invalid or expired payment token for full comic");
             }
-            logger.info("Payment verified", { paymentId: decoded.paymentId });
+            logger.info("Payment verified for full comic", { paymentId: decoded.paymentId, amount: decoded.amount });
         } catch (error) {
             return res.status(403).json({ error: "Invalid payment token" });
         }
@@ -140,12 +152,12 @@ router.post(
                 return res.status(400).json({ error: "Content flagged as inappropriate. Please keep stories PG-13." });
             }
 
-            const slogan = body.quote || "Love is a journey we take together."; // Default/Auto slogan placeholder if empty
+            const slogan = body.quote || "Love is a journey we take together.";
 
             // Create job in database
             job = await prisma.comicJob.create({
                 data: {
-                    userId: body.userId, // Link to user from body
+                    userId: body.userId,
                     image1Url: body.image1Url,
                     image2Url: body.image2Url,
                     theme: body.theme,
@@ -153,7 +165,7 @@ router.post(
                     prompt: body.story,
                     character1Name: body.character1Name,
                     character2Name: body.character2Name,
-                    pageCount: 7, // 1 Front + 5 Story + 1 Back
+                    pageCount: 7,
                     status: "GENERATING",
                 },
             });

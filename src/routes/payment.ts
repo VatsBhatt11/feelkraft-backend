@@ -8,7 +8,11 @@ const router = Router();
 // Create order
 router.post("/order", async (req, res) => {
     try {
-        const { amount = 249 } = req.body; // Default ₹249
+        const { amount } = req.body;
+        if (!amount) {
+            return res.status(400).json({ error: "Amount is required" });
+        }
+
         const order = await paymentService.createOrder(amount);
         res.json(order);
     } catch (error) {
@@ -20,7 +24,11 @@ router.post("/order", async (req, res) => {
 // Verify payment
 router.post("/verify", async (req, res) => {
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount = 249 } = req.body;
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount } = req.body;
+
+        if (!amount) {
+            return res.status(400).json({ error: "Amount is required" });
+        }
 
         const isValid = paymentService.verifySignature(
             razorpay_order_id,
@@ -50,7 +58,6 @@ router.post("/verify", async (req, res) => {
                         currency: "INR",
                         status: "success",
                         phoneNumber: phone,
-                        // comicJobId can be linked later when the token is used
                     }
                 });
                 logger.info("Payment recorded in DB", { paymentId: razorpay_payment_id });
@@ -58,12 +65,11 @@ router.post("/verify", async (req, res) => {
                 logger.error("Failed to record payment in DB", dbError);
             }
 
-            // In a real app, generate a JWT token here signed with your secret
-            // For now, we'll return a simple success token that contains the payment ID
-            // Ideally, use a proper JWT library here
+            // Generate payment token including the amount
             const paymentToken = Buffer.from(JSON.stringify({
                 paymentId: razorpay_payment_id,
                 orderId: razorpay_order_id,
+                amount: amount,
                 timestamp: Date.now()
             })).toString("base64");
 

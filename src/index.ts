@@ -6,7 +6,7 @@ import { generateRouter } from "./routes/generate.js";
 import { jobRouter } from "./routes/job.js";
 import { callbackRouter } from "./routes/callback.js";
 import { refineRouter } from "./routes/refine.js";
-import { userRouter } from "./routes/user.js";
+
 import { paymentRouter } from "./routes/payment.js";
 import { cleanupService } from "./services/cleanup.js";
 import { rateLimiter } from "./middleware/rateLimit.js";
@@ -31,7 +31,7 @@ app.use("/api/generate", generateRouter);
 app.use("/api/job", jobRouter);
 app.use("/api/callback", callbackRouter);
 app.use("/api/refine", refineRouter);
-app.use("/api/user", userRouter);
+
 app.use("/api/payment", paymentRouter);
 
 app.get("/health", (req, res) => {

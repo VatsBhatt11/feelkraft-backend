@@ -110,6 +110,7 @@ router.get("/list", authenticateUser, async (req, res) => {
                 logs: {
                     orderBy: { pageNum: "asc" },
                 },
+                refundRequest: true,
             },
         });
 
@@ -127,6 +128,7 @@ router.get("/list", authenticateUser, async (req, res) => {
                 createdAt: job.createdAt,
                 theme: job.theme,
                 style: job.style,
+                refundRequest: job.refundRequest,
             };
         });
 
@@ -139,6 +141,47 @@ router.get("/list", authenticateUser, async (req, res) => {
     } catch (error) {
         logger.error("Failed to list jobs", error);
         res.status(500).json({ error: "Failed to list jobs" });
+    }
+});
+
+// Raise refund request
+router.post("/:id/refund", authenticateUser, async (req, res) => {
+    const { id } = req.params as { id: string };
+    const userId = req.user.id;
+
+    try {
+        const job = await prisma.comicJob.findUnique({
+            where: { id },
+            include: { refundRequest: true }
+        });
+
+        if (!job || job.userId !== userId) {
+            return res.status(404).json({ error: "Job not found" });
+        }
+
+        if (job.status !== "FAILED") {
+            return res.status(400).json({ error: "Refund can only be requested for failed generations" });
+        }
+
+        if (job.refundRequest) {
+            return res.status(400).json({ error: "Refund request already raised" });
+        }
+
+        const refundRequest = await prisma.refundRequest.create({
+            data: {
+                jobId: id as any,
+                reason: "User requested refund for failed generation"
+            }
+        });
+
+        // Clear cache
+        const cacheKey = `gallery:list:${userId}`;
+        await cacheSet(cacheKey, null, 0);
+
+        res.json({ success: true, refundRequest });
+    } catch (error) {
+        logger.error("Failed to raise refund request", error);
+        res.status(500).json({ error: "Failed to raise refund request" });
     }
 });
 

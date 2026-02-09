@@ -33,16 +33,3 @@ export const generationLimiter = rateLimit({
     store: getStore("gen"),
 });
 
-// Free user limiter: 3 generations per day per IP
-export const freeUserLimiter = rateLimit({
-    windowMs: 24 * 60 * 60 * 1000, // 24 hours
-    max: 3,
-    message: { error: "Daily free generation limit reached. Upgrade to Pro for more!" },
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req) => {
-        // Use IP + a custom header if available
-        return req.ip || req.headers["x-forwarded-for"]?.toString() || "unknown";
-    },
-    store: getStore("free"),
-});

@@ -43,6 +43,7 @@ export const styleSettings: Record<string, string> = {
     "disney-pixar": "bright Disney-Pixar inspired movie style, clean lines, vibrant 3D colors, high-end animation aesthetic",
     manga: "MODERN colorful Japanese manga style, vibrant digital colors, expressive eyes, dynamic poses, high-quality anime aesthetic. Use English text only for any speech bubbles or text.",
     ghibli: "Studio Ghibli inspired anime style, soft painted backgrounds, expressive character designs, whimsical and magical atmosphere",
+    cartoon: "Cartoon-style, simple lines, bold colors, dynamic poses, high-quality anime aesthetic. Use English text only for any speech bubbles or text.",
 };
 
 // Segment story into page-specific contexts
@@ -82,8 +83,8 @@ Visual elements: ${theme.elements}
 The characters should look consistent throughout, with ${char1} and ${char2} clearly distinguishable.`;
 }
 
-// Free preview: Single page summarizing the story
-export function buildFreePreviewPrompt(
+// Single page comic prompt
+export function buildSinglePagePrompt(
     theme: string,
     style: string,
     story?: string,
@@ -112,12 +113,12 @@ export function buildFreePreviewPrompt(
 Create a single comic page with 5 panels in a zig-zag layout showing:
 ${storyContext}
 
-This is a teaser/preview page that captures the essence of their story.
+This is a standalone comic page that captures the essence of their story.
 Include speech bubbles with heartfelt dialogue.
 Make it visually striking as a standalone piece.`;
 }
 
-// Full comic: 10 pages (1 front cover + 8 story pages + 1 back cover)
+// Full comic: 7 pages (1 front cover + 5 story pages + 1 back cover)
 export function buildFullComicPrompts(
     theme: string,
     style: string,
@@ -144,8 +145,8 @@ export function buildFullComicPrompts(
     const char2 = character2Name || "Character 2";
     const prompts: string[] = [];
 
-    // Segment story into 8 parts for the story pages
-    const storySegments = segmentStory(story || "", 8);
+    // Segment story into 5 parts for the story pages
+    const storySegments = segmentStory(story || "", 5);
 
     // Page 1: Front Cover
     prompts.push(`${base}
@@ -157,25 +158,22 @@ Include decorative borders, title text area at top.
 Make it magazine-cover quality with professional layout.
 Style: Bold, striking, romantic cover design.`);
 
-    // Pages 2-9: Story pages (8 pages with 5 panels each)
+    // Pages 2-6: Story pages (5 pages with 5 panels each)
     const pageDescriptions = [
         "The beginning - how they first met or the start of their journey",
-        "Getting to know each other - early moments and discoveries",
-        "Growing closer - building connection and trust",
-        "A challenge or obstacle they faced together",
-        "Overcoming difficulties and growing stronger",
-        "Special memories and meaningful moments",
-        "Deepening their bond and commitment",
-        "The present day - their love continues to grow",
+        "Growing closer - building connection and building meaningful memories",
+        "A challenge or obstacle they faced together and overcoming it",
+        "Special memories and deepening their bond",
+        "The present day - their love continues to grow and look forward to the future",
     ];
 
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 5; i++) {
         const storyContext = storySegments[i];
         const pageDescription = pageDescriptions[i];
 
         prompts.push(`${base}
 
-Create comic page ${i + 2} of 10 with 5 PANELS in a ZIG-ZAG LAYOUT.
+Create comic page ${i + 2} of 7 with 5 PANELS in a ZIG-ZAG LAYOUT.
 Panel arrangement: alternating left-to-right, right-to-left reading flow.
 
 Page theme: ${pageDescription}
@@ -188,10 +186,10 @@ Each panel should:
 - Use dynamic angles and compositions
 - Express emotions clearly through body language and expressions
 
-${quote && i === 4 ? `Include the quote: "${quote}"` : ""}`);
+${quote && i === 2 ? `Include the quote: "${quote}"` : ""}`);
     }
 
-    // Page 10: Back Cover
+    // Page 7: Back Cover
     prompts.push(`${base}
 
 Create a BACK COVER for the comic book.
@@ -205,4 +203,4 @@ Include space for "The End" or "To Be Continued..." text.`);
 }
 
 // Export for backward compatibility
-export { buildFreePreviewPrompt as buildPromptForPage };
+export { buildSinglePagePrompt as buildPromptForPage };
