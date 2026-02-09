@@ -39,6 +39,7 @@ app.post("/api/auth/sync", authenticateUser, (req, res) => {
 });
 
 app.get("/health", (req, res) => {
+    logger.info("Health check heartbeat received");
     res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
