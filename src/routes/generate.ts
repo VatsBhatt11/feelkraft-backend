@@ -70,7 +70,7 @@ router.post(
 
             logger.info("Single page job created", { jobId: job.id, userId: user.id });
 
-            // Generate prompt and call API
+            // Generate prompt
             const prompt = buildSinglePagePrompt(
                 body.theme,
                 body.style,
@@ -78,11 +78,103 @@ router.post(
                 body.character1Name,
                 body.character2Name,
                 body.relationship,
-                body.tone
+                body.tone || "romantic"
             );
 
+            // 4. Kickoff AI processing in background
+            runPreviewGeneration(job.id, prompt, [body.image1Url, body.image2Url]).catch(err => {
+                logger.error("Background preview generation kickoff failed", { jobId: job.id, error: err });
+            });
+
+            // 5. Return jobId instantly
+            res.json({ jobId: job.id });
+        } catch (error) {
+            logger.error("Single page generation initialization failed", error);
+            res.status(500).json({ error: "Generation failed" });
+        }
+    }
+);
+
+// Background helper for single page generation
+async function runPreviewGeneration(jobId: string, prompt: string, imageUrls: string[]) {
+    try {
+        const taskId = await nanoBananaService.createTask({
+            prompt,
+            imageUrls,
+            aspectRatio: "3:4",
+            resolution: "2K",
+        });
+
+        await prisma.generationLog.create({
+            data: {
+                jobId,
+                taskId,
+                pageNum: 1,
+                status: "waiting",
+            },
+        });
+
+        await pollAndComplete(jobId, [taskId]);
+    } catch (error) {
+        logger.error("Background preview generation failed", { jobId, error });
+    }
+}
+
+
+
+// Background helper for full generation to keep API response instant
+async function runFullGeneration(jobId: string, body: any) {
+    try {
+        const slogan = body.quote || "Love is a journey we take together.";
+
+        // Generate all prompts with full context using Groq
+        const fullStoryPrompt = `
+        Story: ${body.story}
+        Characters: ${body.character1Name} and ${body.character2Name}
+        Relationship: ${body.relationship}
+        Tone: ${body.tone}
+        Slogan/Quote for Back Cover: "${slogan}"
+        
+        Task: Break this story into exactly 5 sequential comic book page descriptions.
+        Plus create a visual description for a Front Cover and a Back Cover (Conclusion).
+        
+        CRITICAL SAFETY INSTRUCTION: You are a PG-13 comic generator. DO NOT generate nudity, sexual content, gore, or extreme violence. If the story contains such themes, tone them down to be suggestive but safe, or refuse if impossible.
+        
+        Requirements:
+        1. Front Cover: Visual description suitable for a cover. Generate a creative title for the front cover that is RELEVANT to the story details (e.g. "A Night in Paris", "The Lost Key of Love", etc.). DO NOT simply use "Our Romantic Story".
+        2. Pages 1-5: Each page must be described as having a 5-panel layout. 
+           - CRITICAL: At least 3 panels on EVERY page must have meaningful dialogue or narration relevant to the story on that page.
+           - Ensure consistent storytelling across pages.
+        3. Back Cover: A Great Happy Ending visual. 
+           - CRITICAL: NO dialogues on the back cover.
+        
+        Return a JSON object with exactly this structure:
+        {
+          "frontCoverTitle": "A creative title related to the story",
+          "frontCover": "Visual description of the front cover (visual details only, no text descriptions)...",
+          "pages": ["Description for page 1", "Description for page 2", ... (5 total)],
+          "backCover": "Visual description of the back cover (visual details only, no text or slogan descriptions)...",
+          "generatedSlogan": "The slogan/quote you used (either the provided one or a new 3-5 word poetic one if the provided one was too long or generic)"
+        }
+        Make sure the descriptions are visual and suitable for an AI image generator. DO NOT describe text or titles INSIDE the visual descriptions as they will be added separately.
+        `;
+
+        const storyStructure = await groqService.generateStoryStructure(fullStoryPrompt);
+        const finalSlogan = storyStructure.generatedSlogan || slogan;
+        const artStyle = styleSettings[body.style] || "";
+        const finalTitle = storyStructure.frontCoverTitle || `Our ${body.theme} Story`;
+
+        const prompts = [
+            `Front cover of a comic book in ${artStyle} style. Title text "${finalTitle}". ${storyStructure.frontCover} --ar 3:4`,
+            ...storyStructure.pages.map((desc: string, i: number) => `Comic page ${i + 1} in ${artStyle} style, 5 panel layout. ${desc} --ar 3:4`),
+            `Back cover of a comic book in ${artStyle} style. ${storyStructure.backCover} Text "${finalSlogan}" at the bottom. NO ISBN, NO BARCODE. --ar 3:4`
+        ];
+
+        // Create all tasks
+        const taskIds: string[] = [];
+        for (let i = 0; i < prompts.length; i++) {
             const taskId = await nanoBananaService.createTask({
-                prompt,
+                prompt: prompts[i],
                 imageUrls: [body.image1Url, body.image2Url],
                 aspectRatio: "3:4",
                 resolution: "2K",
@@ -90,24 +182,28 @@ router.post(
 
             await prisma.generationLog.create({
                 data: {
-                    jobId: job.id,
+                    jobId,
                     taskId,
-                    pageNum: 1,
+                    pageNum: i + 1,
                     status: "waiting",
                 },
             });
-
-            pollAndComplete(job.id, [taskId]).catch((err) => {
-                logger.error("Background polling failed", { jobId: job.id, error: err });
-            });
-
-            res.json({ jobId: job.id });
-        } catch (error) {
-            logger.error("Single page generation failed", error);
-            res.status(500).json({ error: "Generation failed" });
+            taskIds.push(taskId);
         }
+
+        // Start background polling
+        pollAndComplete(jobId, taskIds).catch((err) => {
+            logger.error("Background polling failed", { jobId, error: err });
+        });
+
+    } catch (error) {
+        logger.error("Background full generation processing failed", { jobId, error });
+        await prisma.comicJob.update({
+            where: { id: jobId },
+            data: { status: "FAILED" }
+        });
     }
-);
+}
 
 // Full comic: 7 pages (requires ₹99 payment)
 router.post(
@@ -152,9 +248,7 @@ router.post(
                 return res.status(400).json({ error: "Content flagged as inappropriate. Please keep stories PG-13." });
             }
 
-            const slogan = body.quote || "Love is a journey we take together.";
-
-            // Create job in database
+            // 2. Create job in database immediately
             job = await prisma.comicJob.create({
                 data: {
                     userId: body.userId,
@@ -172,7 +266,7 @@ router.post(
 
             logger.info("Full comic job created", { jobId: job.id });
 
-            // 2. Link payment to job in DB
+            // 3. Link payment to job in DB
             try {
                 const decodedToken = JSON.parse(Buffer.from(paymentToken, "base64").toString());
                 if (decodedToken.paymentId) {
@@ -186,101 +280,16 @@ router.post(
                 logger.warn("Failed to link payment to job", { error: linkError, jobId: job.id });
             }
 
-            // Generate all prompts with full context using Groq
-            // We need 7 distinct panels: 
-            // 1. Front Cover (Title "Our ...")
-            // 2-6. Story pages (5 pages)
-            // 7. Back Cover (Conclusion + Quote)
-
-            const fullStoryPrompt = `
-            Story: ${body.story}
-            Characters: ${body.character1Name} and ${body.character2Name}
-            Relationship: ${body.relationship}
-            Tone: ${body.tone}
-            Slogan/Quote for Back Cover: "${slogan}"
-            
-            Task: Break this story into exactly 5 sequential comic book page descriptions.
-            Plus create a visual description for a Front Cover and a Back Cover (Conclusion).
-            
-            CRITICAL SAFETY INSTRUCTION: You are a PG-13 comic generator. DO NOT generate nudity, sexual content, gore, or extreme violence. If the story contains such themes, tone them down to be suggestive but safe, or refuse if impossible.
-            
-            Requirements:
-            1. Front Cover: Visual description suitable for a cover. Generate a creative title for the front cover that is RELEVANT to the story details (e.g. "A Night in Paris", "The Lost Key of Love", etc.). DO NOT simply use "Our Romantic Story".
-            2. Pages 1-5: Each page must be described as having a 5-panel layout. 
-               - CRITICAL: At least 3 panels on EVERY page must have meaningful dialogue or narration relevant to the story on that page.
-               - Ensure consistent storytelling across pages.
-            3. Back Cover: A Great Happy Ending visual. 
-               - CRITICAL: NO dialogues on the back cover.
-            
-            Return a JSON object with exactly this structure:
-            {
-              "frontCoverTitle": "A creative title related to the story",
-              "frontCover": "Visual description of the front cover (visual details only, no text descriptions)...",
-              "pages": ["Description for page 1", "Description for page 2", ... (5 total)],
-              "backCover": "Visual description of the back cover (visual details only, no text or slogan descriptions)...",
-              "generatedSlogan": "The slogan/quote you used (either the provided one or a new 3-5 word poetic one if the provided one was too long or generic)"
-            }
-            Make sure the descriptions are visual and suitable for an AI image generator. DO NOT describe text or titles INSIDE the visual descriptions as they will be added separately.
-            `;
-
-            const storyStructure = await groqService.generateStoryStructure(fullStoryPrompt);
-
-            // If Groq fails or returns invalid format, fallback is needed (omitted for brevity)
-
-            // Use the slogan returned by AI (in case it generated one) or the input one
-            const finalSlogan = storyStructure.generatedSlogan || slogan;
-
-            const artStyle = styleSettings[body.style] || "";
-            const finalTitle = storyStructure.frontCoverTitle || `Our ${body.theme} Story`;
-            const prompts = [
-                `Front cover of a comic book in ${artStyle} style. Title text "${finalTitle}". ${storyStructure.frontCover} --ar 3:4`,
-                ...storyStructure.pages.map((desc: string, i: number) => `Comic page ${i + 1} in ${artStyle} style, 5 panel layout. ${desc} --ar 3:4`),
-                `Back cover of a comic book in ${artStyle} style. ${storyStructure.backCover} Text "${finalSlogan}" at the bottom. NO ISBN, NO BARCODE. --ar 3:4`
-            ];
-
-            // Create all tasks (10 API calls)
-            const taskIds: string[] = [];
-            for (let i = 0; i < prompts.length; i++) {
-                const taskId = await nanoBananaService.createTask({
-                    prompt: prompts[i],
-                    imageUrls: [body.image1Url, body.image2Url],
-                    aspectRatio: "3:4",
-                    resolution: "2K",
-                });
-                taskIds.push(taskId);
-
-                await prisma.generationLog.create({
-                    data: {
-                        jobId: job.id,
-                        taskId,
-                        pageNum: i + 1,
-                        status: "waiting",
-                    },
-                });
-            }
-
-            // Start polling in background
-            pollAndComplete(job.id, taskIds).catch((err) => {
-                logger.error("Background polling failed", { jobId: job.id, error: err });
+            // 4. Kickoff AI processing in background
+            runFullGeneration(job.id, body).catch(err => {
+                logger.error("Background full generation kickoff failed", { jobId: job.id, error: err });
             });
 
+            // 5. Return jobId instantly
             res.json({ jobId: job.id });
         } catch (error) {
-            logger.error("Full generation failed", error);
-            console.error("FULL_GENERATION_ERROR", error);
-
-            if (job) {
-                try {
-                    await prisma.comicJob.update({
-                        where: { id: job.id },
-                        data: { status: "FAILED" }
-                    });
-                } catch (dbError) {
-                    logger.error("Failed to update job status to FAILED", dbError);
-                }
-            }
-
-            res.status(500).json({ error: "Generation failed", details: error instanceof Error ? error.message : "Unknown error" });
+            logger.error("Comic generation initialization failed", error);
+            res.status(500).json({ error: "Generation failed" });
         }
     }
 );

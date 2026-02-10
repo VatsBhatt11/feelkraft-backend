@@ -20,7 +20,7 @@ const PORT = process.env.PORT || 3001;
 app.use(cors({
     origin: process.env.NODE_ENV === "production"
         ? process.env.FRONTEND_URL
-        : "http://localhost:8080",
+        : ["http://localhost:8080", "http://192.168.0.2:8080"],
     credentials: true,
 }));
 app.use(express.json());
