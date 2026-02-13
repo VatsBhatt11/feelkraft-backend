@@ -335,65 +335,81 @@ router.get("/:jobId/download-pdf", async (req, res) => {
 // Background polling and completion
 async function pollAndComplete(jobId: string, taskIds: string[]) {
     const imageUrls: string[] = [];
+    let failureCount = 0;
 
-    try {
-        // Poll all tasks
-        for (let i = 0; i < taskIds.length; i++) {
-            const taskId = taskIds[i];
+    // Poll all tasks individually, preventing one failure from stopping others
+    for (let i = 0; i < taskIds.length; i++) {
+        const taskId = taskIds[i];
+
+        try {
             const results = await nanoBananaService.pollUntilComplete(taskId);
             const externalUrl = results[0];
 
-            logger.info("Downloading image from Kie for permanent storage", { taskId, url: externalUrl });
+            logger.info("Using Kie URL directly", { taskId, url: externalUrl });
 
-            // Download and re-upload to Supabase for permanent storage
-            const buffer = await storageService.downloadImage(externalUrl);
-            const permanentUrl = await storageService.uploadGeneratedFile(
-                buffer,
-                `panel-${jobId}-${i}.png`,
-                "image/png"
-            );
-
-            // Update log
+            // Update log to success with Kie URL
             await prisma.generationLog.update({
                 where: { id: (await prisma.generationLog.findFirst({ where: { taskId } }))?.id },
                 data: {
                     status: "success",
-                    resultUrl: permanentUrl,
+                    resultUrl: externalUrl,
                 },
             });
 
-            imageUrls.push(permanentUrl);
+            imageUrls.push(externalUrl);
+        } catch (taskError) {
+            logger.error("Individual task failed", { jobId, taskId, error: taskError });
+            failureCount++;
+
+            // Update log to failed
+            await prisma.generationLog.update({
+                where: { id: (await prisma.generationLog.findFirst({ where: { taskId } }))?.id },
+                data: {
+                    status: "failed",
+                    error: String(taskError)
+                },
+            });
+            // We continue to the next task instead of throwing
         }
+    }
 
-        // Update job as completed (without PDF URL)
-        await prisma.comicJob.update({
-            where: { id: jobId },
-            data: {
-                status: "COMPLETED",
-                generatedImages: imageUrls,
-                // pdfUrl is no longer stored
-            },
-        });
+    // Determine final job status
+    try {
+        if (imageUrls.length > 0) {
+            // Success or Partial Success
+            await prisma.comicJob.update({
+                where: { id: jobId },
+                data: {
+                    status: "COMPLETED", // Treated as completed so user sees what was generated
+                    generatedImages: imageUrls,
+                },
+            });
 
-        logger.info("Job completed", { jobId, pageCount: imageUrls.length });
+            if (failureCount > 0) {
+                logger.warn("Job completed with partial failures", { jobId, successCount: imageUrls.length, failureCount });
+            } else {
+                logger.info("Job completed successfully", { jobId, pageCount: imageUrls.length });
+            }
 
-        // Cleanup source images after successful generation
-        const job = await prisma.comicJob.findUnique({
-            where: { id: jobId },
-            select: { image1Url: true, image2Url: true }
-        });
+            // Cleanup source images after generation (even partial)
+            const job = await prisma.comicJob.findUnique({
+                where: { id: jobId },
+                select: { image1Url: true, image2Url: true }
+            });
 
-        if (job) {
-            await storageService.deleteFiles([job.image1Url, job.image2Url]);
+            if (job) {
+                await storageService.deleteFiles([job.image1Url, job.image2Url]);
+            }
+        } else {
+            // Total Failure (0 images generated)
+            logger.error("Job failed completely - no images generated", { jobId });
+            await prisma.comicJob.update({
+                where: { id: jobId },
+                data: { status: "FAILED" },
+            });
         }
-
-    } catch (error) {
-        logger.error("Job failed", { jobId, error });
-
-        await prisma.comicJob.update({
-            where: { id: jobId },
-            data: { status: "FAILED" },
-        });
+    } catch (dbError) {
+        logger.error("Failed to update final job status", { jobId, error: dbError });
     }
 }
 
