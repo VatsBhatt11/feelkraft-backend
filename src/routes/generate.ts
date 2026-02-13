@@ -34,15 +34,20 @@ router.post(
 
         try {
             const decoded = JSON.parse(Buffer.from(paymentToken, "base64").toString());
-            if (!decoded.paymentId || !decoded.orderId || decoded.amount !== 9 || Date.now() - decoded.timestamp > 3600000) {
+            const amount = Number(decoded.amount);
+            if (!decoded.paymentId || !decoded.orderId || amount !== 9 || Date.now() - decoded.timestamp > 3600000) {
+                logger.warn("Invalid payment token details", { decoded });
                 throw new Error("Invalid or expired payment token for single page");
             }
             logger.info("Payment verified for single page", { paymentId: decoded.paymentId });
         } catch (error) {
+            logger.error("Payment token verification failed", { error });
             return res.status(403).json({ error: "Invalid payment token" });
         }
 
         try {
+            logger.info("Creating job for user", { userId: user.id });
+
             // Create job in database
             const job = await prisma.comicJob.create({
                 data: {
@@ -225,12 +230,16 @@ router.post(
 
         try {
             const decoded = JSON.parse(Buffer.from(paymentToken, "base64").toString());
-            const validAmount = decoded.amount === 99 || decoded.amount === 90;
+            const amount = Number(decoded.amount);
+            const validAmount = amount === 99 || amount === 90;
+
             if (!decoded.paymentId || !decoded.orderId || !validAmount || Date.now() - decoded.timestamp > 3600000) {
+                logger.warn("Invalid full comic payment token", { decoded });
                 throw new Error("Invalid or expired payment token for full comic");
             }
-            logger.info("Payment verified for full comic", { paymentId: decoded.paymentId, amount: decoded.amount });
+            logger.info("Payment verified for full comic", { paymentId: decoded.paymentId, amount });
         } catch (error) {
+            logger.error("Payment token verification failed", { error });
             return res.status(403).json({ error: "Invalid payment token" });
         }
 
@@ -247,6 +256,8 @@ router.post(
             if (nsfwKeywords.some(keyword => lowerStory.includes(keyword))) {
                 return res.status(400).json({ error: "Content flagged as inappropriate. Please keep stories PG-13." });
             }
+
+            logger.info("Creating full comic job for user", { userId: user.id });
 
             // 2. Create job in database immediately
             job = await prisma.comicJob.create({

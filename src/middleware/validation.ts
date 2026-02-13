@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { logger } from "../utils/logger.js";
 import type { Request, Response, NextFunction } from "express";
 
 export const uploadSchema = z.object({
@@ -10,7 +11,7 @@ export const generateSchema = z.object({
     image2Url: z.string().url("Invalid image2 URL"),
     theme: z.enum(["romantic", "adventure", "funny", "fantasy", "heartfelt", "nostalgic"]),
     style: z.enum(["ghibli", "disney-pixar", "manga", "cartoon"]),
-    story: z.string().max(2000).optional(),
+    story: z.string().max(5000).optional(),
     character1Name: z.string().max(50).optional(),
     character2Name: z.string().max(50).optional(),
     relationship: z.string().max(100).optional(),
@@ -26,6 +27,10 @@ export function validateBody<T>(schema: z.ZodSchema<T>) {
         const result = schema.safeParse(req.body);
 
         if (!result.success) {
+            logger.warn("Validation failed", {
+                error: result.error.errors,
+                body: { ...req.body, image1: undefined, image2: undefined } // Mask potential binary data or large fields
+            });
             return res.status(400).json({
                 error: "Validation failed",
                 details: result.error.errors,

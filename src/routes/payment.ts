@@ -24,7 +24,8 @@ router.post("/order", async (req, res) => {
 // Verify payment
 router.post("/verify", async (req, res) => {
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount } = req.body;
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+        const amount = parseInt(req.body.amount, 10);
 
         if (!amount) {
             return res.status(400).json({ error: "Amount is required" });
