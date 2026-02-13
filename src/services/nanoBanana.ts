@@ -66,7 +66,7 @@ export class NanoBananaService {
                 prompt: input.prompt,
                 image_input: input.imageUrls || [],
                 aspect_ratio: input.aspectRatio || "3:4",
-                resolution: input.resolution || "2K",
+                resolution: input.resolution || "1K",
                 output_format: input.outputFormat || "png",
             },
             ...(this.callbackUrl && { callBackUrl: this.callbackUrl }),

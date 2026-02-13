@@ -102,7 +102,7 @@ async function runPreviewGeneration(jobId: string, prompt: string, imageUrls: st
             prompt,
             imageUrls,
             aspectRatio: "3:4",
-            resolution: "2K",
+            resolution: "1K",
         });
 
         await prisma.generationLog.create({
@@ -177,7 +177,7 @@ async function runFullGeneration(jobId: string, body: any) {
                 prompt: prompts[i],
                 imageUrls: [body.image1Url, body.image2Url],
                 aspectRatio: "3:4",
-                resolution: "2K",
+                resolution: "1K",
             });
 
             await prisma.generationLog.create({
