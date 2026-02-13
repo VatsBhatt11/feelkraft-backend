@@ -12,7 +12,8 @@ const BUCKET_GENERATED = "comic-generated";
 
 export class StorageService {
     async uploadImage(file: Buffer, filename: string, mimeType: string): Promise<string> {
-        const uniqueFilename = `${uuidv4()}-${filename}`;
+        const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const uniqueFilename = `${uuidv4()}-${sanitizedFilename}`;
 
         const { data, error } = await supabase.storage
             .from(BUCKET_UPLOADS)
