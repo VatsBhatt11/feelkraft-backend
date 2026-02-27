@@ -43,7 +43,16 @@ export const authenticateUser = async (req: Request, res: Response, next: NextFu
                 data: {
                     id: user.id,
                     email: user.email,
+                    phoneNumber: user.user_metadata?.phone_number || user.phone,
                 },
+            });
+        } else if (!dbUser.phoneNumber && (user.user_metadata?.phone_number || user.phone)) {
+            // Update phone if missing
+            dbUser = await prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    phoneNumber: user.user_metadata?.phone_number || user.phone
+                }
             });
         }
 

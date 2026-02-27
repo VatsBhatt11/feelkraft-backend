@@ -48,21 +48,24 @@ router.post(
         try {
             logger.info("Creating job for user", { userId: user.id });
 
+            // 2. Map imageUrls directly (imageUrls[0] -> image1Url, remaining stringified -> image2Url)
+            const imageUrls = body.imageUrls || [];
+            const image1Url = imageUrls[0] || "";
+            const image2Url = imageUrls.length > 1 ? JSON.stringify(imageUrls.slice(1)) : "";
+
             // Create job in database
             const job = await prisma.comicJob.create({
                 data: {
                     userId: body.userId,
-                    image1Url: body.image1Url,
-                    image2Url: body.image2Url,
+                    image1Url: image1Url,
+                    image2Url: image2Url,
                     theme: body.theme,
                     style: body.style,
                     prompt: body.story,
                     pageCount: 1,
                     status: "GENERATING",
                 },
-            });
-
-            // Link payment
+            });            // Link payment
             try {
                 const decodedToken = JSON.parse(Buffer.from(paymentToken, "base64").toString());
                 if (decodedToken.paymentId) {
@@ -87,11 +90,9 @@ router.post(
             );
 
             // 4. Kickoff AI processing in background
-            runPreviewGeneration(job.id, prompt, [body.image1Url, body.image2Url]).catch(err => {
+            runPreviewGeneration(job.id, prompt, imageUrls).catch(err => {
                 logger.error("Background preview generation kickoff failed", { jobId: job.id, error: err });
-            });
-
-            // 5. Return jobId instantly
+            });            // 5. Return jobId instantly
             res.json({ jobId: job.id });
         } catch (error) {
             logger.error("Single page generation initialization failed", error);
@@ -130,7 +131,10 @@ async function runPreviewGeneration(jobId: string, prompt: string, imageUrls: st
 // Background helper for full generation to keep API response instant
 async function runFullGeneration(jobId: string, body: any) {
     try {
-        const slogan = body.quote || "Love is a journey we take together.";
+        const userSlogan = body.quote || "";
+        const sloganPromptPart = userSlogan
+            ? `USER PROVIDED Back Cover Title/Quote: "${userSlogan}". You MUST use this exactly as provided.`
+            : `USER DID NOT PROVIDE a Back Cover Title. You MUST generate a poetic, meaningful slogan (3-5 words) that perfectly concludes the story.`;
 
         // Generate all prompts with full context using Groq
         const fullStoryPrompt = `
@@ -138,36 +142,50 @@ async function runFullGeneration(jobId: string, body: any) {
         Characters: ${body.character1Name} and ${body.character2Name}
         Relationship: ${body.relationship}
         Tone: ${body.tone}
-        Slogan/Quote for Back Cover: "${slogan}"
+        ${sloganPromptPart}
         
         Task: Break this story into exactly 5 sequential comic book page descriptions.
         Plus create a visual description for a Front Cover and a Back Cover (Conclusion).
         
         CRITICAL SAFETY INSTRUCTION: You are a PG-13 comic generator. DO NOT generate nudity, sexual content, gore, or extreme violence. If the story contains such themes, tone them down to be suggestive but safe, or refuse if impossible.
         
+        CRITICAL CONTENT INSTRUCTION: 
+        1. You MUST use ONLY the characters provided in the input images (${body.character1Name || "Person 1"} and ${body.character2Name || "Person 2"}). 
+        2. DO NOT hallucinate any other characters, animals, or new people. No extras in the background unless they are blurry and generic.
+        3. Every single person in every panel MUST look exactly like the people in the uploaded photos.
+        
+        CRITICAL STYLE INSTRUCTION: DO NOT use or describe Chinese, Mandarin, or Japanese text/characters in any style, especially Manga. Use English only.
+        
         Requirements:
-        1. Front Cover: Visual description suitable for a cover. Generate a creative title for the front cover that is RELEVANT to the story details (e.g. "A Night in Paris", "The Lost Key of Love", etc.). DO NOT simply use "Our Romantic Story".
+        1. Front Cover: Generate a MAGNIFICENT and UNIQUE title that is directly inspired by specific details in the story (e.g., specific objects, locations, or dates mentioned).
         2. Pages 1-5: Each page must be described as having a 5-panel layout. 
-           - CRITICAL: At least 3 panels on EVERY page must have meaningful dialogue or narration relevant to the story on that page.
-           - Ensure consistent storytelling across pages.
-        3. Back Cover: A Great Happy Ending visual. 
+           - CRITICAL: At least 3 panels on EVERY page MUST include specific, meaningful character dialogue or narration that reflects the story's emotional arc. Do not use generic phrases.
+           - Ensure the dialogue is written in perfect, natural English.
+           - Ensure consistent character appearances. All characters MUST visually match the input images provided.
+        3. Back Cover: A beautiful, concluding visual.
            - CRITICAL: NO dialogues on the back cover.
+           - CRITICAL: Return the ${userSlogan ? "USER PROVIDED Title" : "generated slogan"} in the "generatedSlogan" field.
         
         Return a JSON object with exactly this structure:
         {
-          "frontCoverTitle": "A creative title related to the story",
-          "frontCover": "Visual description of the front cover (visual details only, no text descriptions)...",
-          "pages": ["Description for page 1", "Description for page 2", ... (5 total)],
-          "backCover": "Visual description of the back cover (visual details only, no text or slogan descriptions)...",
-          "generatedSlogan": "The slogan/quote you used (either the provided one or a new 3-5 word poetic one if the provided one was too long or generic)"
+          "frontCoverTitle": "A creative, story-specific title",
+          "frontCover": "Cinematic visual description of the front cover...",
+          "pages": ["Description for page 1 including dialogues...", "Page 2...", "Page 3...", "Page 4...", "Page 5..."],
+          "backCover": "Visual description of the back cover...",
+          "generatedSlogan": "The text to be shown on the back cover"
         }
-        Make sure the descriptions are visual and suitable for an AI image generator. DO NOT describe text or titles INSIDE the visual descriptions as they will be added separately.
+        Make sure the descriptions are visual and suitable for an AI image generator. DO NOT describe text or titles INSIDE the visual descriptions.
         `;
-
         const storyStructure = await groqService.generateStoryStructure(fullStoryPrompt);
-        const finalSlogan = storyStructure.generatedSlogan || slogan;
+        const finalSlogan = userSlogan || storyStructure.generatedSlogan || "The End.";
         const artStyle = styleSettings[body.style] || "";
         const finalTitle = storyStructure.frontCoverTitle || `Our ${body.theme} Story`;
+
+        // Update job with creative title
+        await prisma.comicJob.update({
+            where: { id: jobId },
+            data: { theme: finalTitle }
+        });
 
         const prompts = [
             `Front cover of a comic book in ${artStyle} style. Title text "${finalTitle}". ${storyStructure.frontCover} --ar 3:4`,
@@ -176,16 +194,15 @@ async function runFullGeneration(jobId: string, body: any) {
         ];
 
         // Create all tasks
+        const imageUrls = body.imageUrls || [];
         const taskIds: string[] = [];
         for (let i = 0; i < prompts.length; i++) {
             const taskId = await nanoBananaService.createTask({
                 prompt: prompts[i],
-                imageUrls: [body.image1Url, body.image2Url],
+                imageUrls: imageUrls,
                 aspectRatio: "3:4",
                 resolution: "1K",
-            });
-
-            await prisma.generationLog.create({
+            }); await prisma.generationLog.create({
                 data: {
                     jobId,
                     taskId,
@@ -259,12 +276,17 @@ router.post(
 
             logger.info("Creating full comic job for user", { userId: user.id });
 
-            // 2. Create job in database immediately
+            // 2. Map imageUrls directly
+            const imageUrls = body.imageUrls || [];
+            const image1Url = imageUrls[0] || "";
+            const image2Url = imageUrls.length > 1 ? JSON.stringify(imageUrls.slice(1)) : "";
+
+            // Create job in database immediately
             job = await prisma.comicJob.create({
                 data: {
                     userId: body.userId,
-                    image1Url: body.image1Url,
-                    image2Url: body.image2Url,
+                    image1Url: image1Url,
+                    image2Url: image2Url,
                     theme: body.theme,
                     style: body.style,
                     prompt: body.story,
@@ -273,9 +295,7 @@ router.post(
                     pageCount: 7,
                     status: "GENERATING",
                 },
-            });
-
-            logger.info("Full comic job created", { jobId: job.id });
+            }); logger.info("Full comic job created", { jobId: job.id });
 
             // 3. Link payment to job in DB
             try {
@@ -330,6 +350,27 @@ router.get("/:jobId/download-pdf", async (req, res) => {
     }
 });
 
+// Proxy image download to bypass CORS
+router.get("/proxy-image", async (req, res) => {
+    const { url } = req.query;
+    if (!url || typeof url !== "string") {
+        return res.status(400).json({ error: "URL is required" });
+    }
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Failed to fetch image");
+
+        const contentType = response.headers.get("content-type");
+        if (contentType) res.setHeader("Content-Type", contentType);
+
+        const buffer = Buffer.from(await response.arrayBuffer());
+        res.send(buffer);
+    } catch (error) {
+        logger.error("Proxy image download failed", { url, error });
+        res.status(500).json({ error: "Failed to proxy image" });
+    }
+});
 
 
 // Background polling and completion
@@ -398,7 +439,16 @@ async function pollAndComplete(jobId: string, taskIds: string[]) {
             });
 
             if (job) {
-                await storageService.deleteFiles([job.image1Url, job.image2Url]);
+                const cleanupUrls = [job.image1Url];
+                if (job.image2Url) {
+                    try {
+                        const extraUrls = JSON.parse(job.image2Url);
+                        if (Array.isArray(extraUrls)) cleanupUrls.push(...extraUrls);
+                    } catch (e) {
+                        cleanupUrls.push(job.image2Url);
+                    }
+                }
+                await storageService.deleteFiles(cleanupUrls);
             }
         } else {
             // Total Failure (0 images generated)

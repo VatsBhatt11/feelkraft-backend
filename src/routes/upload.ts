@@ -23,33 +23,28 @@ const upload = multer({
 
 router.post(
     "/",
-    upload.fields([
-        { name: "image1", maxCount: 1 },
-        { name: "image2", maxCount: 1 },
-    ]),
+    upload.array("images", 6),
     async (req, res) => {
         try {
-            const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+            const files = req.files as Express.Multer.File[];
 
-            if (!files?.image1?.[0] || !files?.image2?.[0]) {
-                return res.status(400).json({ error: "Both image1 and image2 are required" });
+            // Ensure at least one image is uploaded (the UI now guarantees this, but safety first)
+            if (!files || files.length === 0) {
+                return res.status(400).json({ error: "At least one image is required" });
             }
 
-            const image1 = files.image1[0];
-            const image2 = files.image2[0];
-
-            logger.info("Uploading images", {
-                image1: image1.originalname,
-                image2: image2.originalname,
+            logger.info(`Uploading ${files.length} images`, {
+                filenames: files.map(f => f.originalname)
             });
 
-            // Upload both images to Supabase
-            const [image1Url, image2Url] = await Promise.all([
-                storageService.uploadImage(image1.buffer, image1.originalname, image1.mimetype),
-                storageService.uploadImage(image2.buffer, image2.originalname, image2.mimetype),
-            ]);
+            // Upload all images to Supabase concurrently
+            const uploadPromises = files.map(file =>
+                storageService.uploadImage(file.buffer, file.originalname, file.mimetype)
+            );
 
-            res.json({ image1Url, image2Url });
+            const imageUrls = await Promise.all(uploadPromises);
+
+            res.json({ imageUrls });
         } catch (error) {
             logger.error("Upload failed", error);
             res.status(500).json({ error: "Upload failed" });

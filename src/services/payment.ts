@@ -19,13 +19,13 @@ export class PaymentService {
     async createOrder(amount: number, currency = "INR"): Promise<any> {
         try {
             const options = {
-                amount: amount * 100, // Amount in paise
+                amount: Math.round(amount * 100), // Amount in paise/cents, rounded to avoid float issues
                 currency,
                 receipt: `receipt_${Date.now()}`,
             };
 
             const order = await this.razorpay.orders.create(options);
-            logger.info("Razorpay order created", { orderId: order.id });
+            logger.info("Razorpay order created", { orderId: order.id, currency });
             return order;
         } catch (error) {
             logger.error("Failed to create Razorpay order", error);

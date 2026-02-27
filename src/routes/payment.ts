@@ -8,12 +8,12 @@ const router = Router();
 // Create order
 router.post("/order", async (req, res) => {
     try {
-        const { amount } = req.body;
+        const { amount, currency } = req.body;
         if (!amount) {
             return res.status(400).json({ error: "Amount is required" });
         }
 
-        const order = await paymentService.createOrder(amount);
+        const order = await paymentService.createOrder(amount, currency || "INR");
         res.json(order);
     } catch (error) {
         logger.error("Error creating order", error);
@@ -24,11 +24,11 @@ router.post("/order", async (req, res) => {
 // Verify payment
 router.post("/verify", async (req, res) => {
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
-        const amount = parseInt(req.body.amount, 10);
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, currency } = req.body;
+        const amount = parseFloat(req.body.amount);
 
-        if (!amount) {
-            return res.status(400).json({ error: "Amount is required" });
+        if (isNaN(amount)) {
+            return res.status(400).json({ error: "Valid amount is required" });
         }
 
         const isValid = paymentService.verifySignature(
@@ -55,8 +55,8 @@ router.post("/verify", async (req, res) => {
                         paymentId: razorpay_payment_id,
                         orderId: razorpay_order_id,
                         signature: razorpay_signature,
-                        amount: amount, // Store actual amount
-                        currency: "INR",
+                        amount: Math.round(amount * 100), // Store in smallest unit (paise/cents)
+                        currency: currency || "INR",
                         status: "success",
                         phoneNumber: phone,
                     }

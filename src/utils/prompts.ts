@@ -80,7 +80,7 @@ Characters: ${char1} and ${char2} who are ${relationship}.
 Mood: ${theme.mood}
 Color palette: ${theme.colors}
 Visual elements: ${theme.elements}
-The characters should look consistent throughout, with ${char1} and ${char2} clearly distinguishable.`;
+CRITICAL: Use the provided images as absolute reference for ${char1} and ${char2}. They must look identical to the people in the photos throughout all panels. NO OTHER CHARACTERS SHOULD BE ADDED.`;
 }
 
 // Single page comic prompt
