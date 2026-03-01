@@ -115,7 +115,8 @@ ${storyContext}
 
 This is a standalone comic page that captures the essence of their story.
 Include speech bubbles with heartfelt dialogue.
-Make it visually striking as a standalone piece.`;
+Make it visually striking with a vibrant, festive color palette (especially if there are celebratory themes).
+Include space for a meaningful title at the top.`;
 }
 
 // Full comic: 7 pages (1 front cover + 5 story pages + 1 back cover)
@@ -153,7 +154,7 @@ export function buildFullComicPrompts(
 
 Create a stunning FRONT COVER for a comic book.
 Title: "Our Love Story" or similar romantic title
-Feature ${char1} and ${char2} in a dramatic, eye-catching pose.
+CRITICAL: The visual MUST be related to the HOLI festival (Indian festival of colors). Feature ${char1} and ${char2} covered in vibrant colors and gulal.
 Include decorative borders, title text area at top.
 Make it magazine-cover quality with professional layout.
 Style: Bold, striking, romantic cover design.`);
@@ -193,6 +194,7 @@ ${quote && i === 2 ? `Include the quote: "${quote}"` : ""}`);
     prompts.push(`${base}
 
 Create a BACK COVER for the comic book.
+CRITICAL: The visual MUST be related to the HOLI festival, showing a colorful, joyful conclusion.
 Feature a beautiful, emotional scene of ${char1} and ${char2}.
 Include a closing message or dedication area.
 Can include small vignettes of memorable moments from the story.

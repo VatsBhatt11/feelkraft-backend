@@ -158,11 +158,13 @@ async function runFullGeneration(jobId: string, body: any) {
         
         Requirements:
         1. Front Cover: Generate a MAGNIFICENT and UNIQUE title that is directly inspired by specific details in the story (e.g., specific objects, locations, or dates mentioned).
+           - CRITICAL: The Front Cover visual MUST be related to the HOLI festival (Indian festival of colors). Character(s) should be covered in vibrant colors/gulal, with colors flying in the air.
         2. Pages 1-5: Each page must be described as having a 5-panel layout. 
            - CRITICAL: At least 3 panels on EVERY page MUST include specific, meaningful character dialogue or narration that reflects the story's emotional arc. Do not use generic phrases.
            - Ensure the dialogue is written in perfect, natural English.
            - Ensure consistent character appearances. All characters MUST visually match the input images provided.
         3. Back Cover: A beautiful, concluding visual.
+           - CRITICAL: The Back Cover visual MUST also be related to the HOLI festival, showing a colorful, joyful conclusion with festive elements.
            - CRITICAL: NO dialogues on the back cover.
            - CRITICAL: Return the ${userSlogan ? "USER PROVIDED Title" : "generated slogan"} in the "generatedSlogan" field.
         

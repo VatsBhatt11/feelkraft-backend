@@ -61,11 +61,12 @@ export class NanoBananaService {
 
     async createTask(input: CreateTaskInput): Promise<string> {
         const body = {
-            model: "nano-banana-pro",
+            model: "nano-banana-2",
             input: {
                 prompt: input.prompt,
                 image_input: input.imageUrls || [],
                 aspect_ratio: input.aspectRatio || "3:4",
+                google_search: false,
                 resolution: input.resolution || "1K",
                 output_format: input.outputFormat || "png",
             },
